@@ -44,10 +44,10 @@
     // ---------------------
     var map = L.map('map', { maxZoom: 20 }).setView([43.8138, -91.2519], 13);
 
-    L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 20
-    }).addTo(map);
+   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 20
+}).addTo(map);
 
     // ---------------------
     // STATE
