@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bar Deals Map</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <!-- Marker Cluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #121212;
+            color: white;
+        }
+        #map {
+            height: 70vh;
+            border-radius: 12px;
+        }
+        button {
+            margin: 10px 5px;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<h2>🍺 Bar Deals Near You</h2>
+<button onclick="toggleToday()">Filter: OFF (All Bars)</button>
+
+<div id="map"></div>
+
+<script>
+    // ---------------------
+    // MAP SETUP
+    // ---------------------
+    var map = L.map('map', { maxZoom: 20 }).setView([43.8138, -91.2519], 13);
+
+    L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 20
+    }).addTo(map);
+
+    // ---------------------
+    // STATE
+    // ---------------------
+    var showTodayOnly = false;
+    var userLat, userLng;
+    var apiBars = []; // 🔥 store API results
+
+    // ---------------------
+    // CLUSTER
+    // ---------------------
+    var markerCluster = L.markerClusterGroup({
+        maxClusterRadius: 80,
+        disableClusteringAtZoom: 17,
+
+        iconCreateFunction: function(cluster) {
+            var markers = cluster.getAllChildMarkers();
+            var hasDeal = markers.some(m => m.options.hasDeal);
+
+            var color = hasDeal ? "#00c853" : "#888";
+
+            return L.divIcon({
+                html: `<div style="
+                    background:${color};
+                    width:40px;
+                    height:40px;
+                    border-radius:50%;
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                    color:white;
+                    font-weight:bold;
+                ">${cluster.getChildCount()}</div>`,
+                className: "",
+                iconSize: [40, 40]
+            });
+        }
+    });
+
+    map.addLayer(markerCluster);
+
+    // ---------------------
+    // TOGGLE
+    // ---------------------
+    function toggleToday() {
+        showTodayOnly = !showTodayOnly;
+
+        document.querySelector("button").innerText =
+            showTodayOnly ? "Filter: ON (Today's Deals)" : "Filter: OFF (All Bars)";
+
+        refreshMarkers();
+    }
+
+    // ---------------------
+    // HELPERS
+    // ---------------------
+    function formatHour(hour) {
+        var suffix = hour >= 12 ? "PM" : "AM";
+        var h = hour % 12 || 12;
+        return h + ":00 " + suffix;
+    }
+
+    function getTodayDeals(bar) {
+        var today = new Date().toLocaleString('en-US', { weekday: 'long' });
+        return bar.deals.filter(d => d.day === today);
+    }
+
+    function getCurrentDeals(bar) {
+        var now = new Date();
+        var today = now.toLocaleString('en-US', { weekday: 'long' });
+        var hour = now.getHours();
+
+        return bar.deals.filter(d =>
+            d.day === today &&
+            hour >= d.start &&
+            hour < d.end
+        );
+    }
+
+    function getNextDeal(bar) {
+        var now = new Date();
+        var days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+        var upcoming = [];
+
+        bar.deals.forEach(d => {
+            var dealDay = days.indexOf(d.day);
+            var today = now.getDay();
+
+            var diff = dealDay - today;
+            if (diff < 0) diff += 7;
+
+            var date = new Date(now);
+            date.setDate(now.getDate() + diff);
+            date.setHours(d.start, 0, 0, 0);
+
+            if (date > now) upcoming.push({ ...d, date });
+        });
+
+        if (upcoming.length === 0) return null;
+        upcoming.sort((a,b)=>a.date-b.date);
+        return upcoming[0];
+    }
+
+    function createMarker(lat, lng, popup, hasDeal) {
+        var icon = L.icon({
+            iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${hasDeal ? 'green' : 'grey'}.png`,
+            shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png',
+            iconSize: [25,41],
+            iconAnchor: [12,41]
+        });
+
+        return L.marker([lat, lng], { icon, hasDeal }).bindPopup(popup);
+    }
+
+    // ---------------------
+    // YOUR DATA
+    // ---------------------
+    var bars = [
+        {
+            name: "The Crow",
+            lat: 43.8127938,
+            lng: -91.2527736,
+            deals: [
+                { day: "Friday", start: 22, end: 23, deal: "POWER HOUR: $1 Rails" },
+                { day: "Wednesday", start: 12, end: 23, deal: "Wingo: BOGO BEER" },
+                { day: "Friday", start: 23, end: 24, deal: "$2 Rails" },
+                { day: "Saturday", start: 22, end: 23, deal: "POWER HOUR: $1 Rails" }
+            ]
+        },
+        {
+            name: "Brothers Bar",
+            lat: 43.8116725,
+            lng: -91.2528136,
+            deals: [
+                { day: "Thursday", start: 16, end: 18, deal: "$5 Wristbands" }
+            ]
+        }
+    ];
+
+    // ---------------------
+    // MAIN RENDER FUNCTION
+    // ---------------------
+    function refreshMarkers() {
+        markerCluster.clearLayers();
+
+        // ✅ ALWAYS re-add user marker
+        if (userLat && userLng) {
+            var userMarker = L.marker([userLat, userLng])
+                .bindPopup("📍 You are here");
+
+            markerCluster.addLayer(userMarker);
+        }
+
+        // CUSTOM BARS
+        bars.forEach(bar => {
+            var todayDeals = getTodayDeals(bar);
+            var currentDeals = getCurrentDeals(bar);
+
+            if (showTodayOnly && todayDeals.length === 0) return;
+
+            var popup = `<b>${bar.name}</b><br>`;
+
+            if (currentDeals.length > 0) {
+                currentDeals.forEach(d => popup += `🔥 ${d.deal}<br>`);
+            } else if (todayDeals.length > 0) {
+                popup += "📅 Today:<br>";
+                todayDeals.forEach(d => {
+                    popup += `${formatHour(d.start)} - ${d.deal}<br>`;
+                });
+            } else {
+                var next = getNextDeal(bar);
+                popup += next ? `⏭️ ${next.day} ${formatHour(next.start)}<br>${next.deal}` : "No deals";
+            }
+
+            markerCluster.addLayer(
+                createMarker(bar.lat, bar.lng, popup, currentDeals.length > 0)
+            );
+        });
+
+        // API BARS (from stored data)
+        apiBars.forEach(place => {
+            var name = place.tags?.name || "Unnamed Bar";
+
+            var match = bars.find(b =>
+                name.toLowerCase().includes(b.name.toLowerCase())
+            );
+
+            var todayDeals = match ? getTodayDeals(match) : [];
+            var currentDeals = match ? getCurrentDeals(match) : [];
+
+            if (showTodayOnly && todayDeals.length === 0) return;
+
+            var popup = `<b>${name}</b><br>`;
+
+            if (currentDeals.length > 0) {
+                currentDeals.forEach(d => popup += `🔥 ${d.deal}<br>`);
+            } else if (todayDeals.length > 0) {
+                popup += "📅 Today:<br>";
+                todayDeals.forEach(d => {
+                    popup += `${formatHour(d.start)} - ${d.deal}<br>`;
+                });
+            } else {
+                popup += "No deal data";
+            }
+
+            markerCluster.addLayer(
+                createMarker(place.lat, place.lon, popup, currentDeals.length > 0)
+            );
+        });
+    }
+
+    // ---------------------
+    // LOAD API DATA
+    // ---------------------
+    async function loadBarsFromOSM(lat, lng) {
+        var query = `
+            [out:json];
+            node["amenity"~"bar|pub|nightclub"](around:3000, ${lat}, ${lng});
+            out;
+        `;
+
+        var res = await fetch("https://overpass-api.de/api/interpreter", {
+            method: "POST",
+            body: query
+        });
+
+        var data = await res.json();
+
+        apiBars = data.elements; // 🔥 store once
+        refreshMarkers();        // 🔥 then render
+    }
+
+    // ---------------------
+    // LOCATION
+    // ---------------------
+    map.locate({ setView: true, maxZoom: 14 });
+
+    map.on('locationfound', function(e) {
+        userLat = e.latlng.lat;
+        userLng = e.latlng.lng;
+
+        loadBarsFromOSM(userLat, userLng);
+    });
+
+</script>
+
+</body>
+</html>
