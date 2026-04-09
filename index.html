@@ -95,7 +95,7 @@ function getCurrentDeals(bar){
 async function loadDealsFromSheet(){
 
     // 🔥 🔥 🔥 PASTE YOUR CSV LINK HERE 🔥 🔥 🔥
-    var url = "PASTE_YOUR_GOOGLE_SHEET_CSV_LINK_HERE";
+    var url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRW0U7ggb9jz62hIyDEiTXqi6bzQ3NgZ_sEEdN7KfGsMLiwTaeYOHSK3e61bwbe2_GG_BStDFW2KNOQ/pub?output=csv";
 
     var res = await fetch(url);
     var text = await res.text();
