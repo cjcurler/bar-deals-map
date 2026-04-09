@@ -279,7 +279,7 @@ function refreshMarkers(){
 // ---------------- API ----------------
 async function loadBarsFromOSM(lat,lng){
     var query = `
-        [out:json];
+        [out:json][timeout:25];
         node["amenity"~"bar|pub|nightclub"](around:3000, ${lat}, ${lng});
         out;
     `;
@@ -295,6 +295,8 @@ async function loadBarsFromOSM(lat,lng){
             apiBars = [];
         } else {
             var data = await res.json();
+            console.log("Bars found:", data.elements.length);
+
             apiBars = data.elements || [];
         }
 
@@ -307,7 +309,6 @@ async function loadBarsFromOSM(lat,lng){
 
     if(dealsLoaded) refreshMarkers();
 }
-
 // ---------------- LOCATION ----------------
 map.locate({setView:true,maxZoom:14});
 
