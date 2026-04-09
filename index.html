@@ -36,7 +36,7 @@
             cursor: pointer;
         }
 
-        /* 🔥 FIX CLUSTER WHITE BACKGROUND */
+        /* Remove cluster white background */
         .marker-cluster,
         .marker-cluster div {
             background: transparent !important;
@@ -68,6 +68,9 @@ var userLat, userLng;
 var apiBars = [];
 var bars = [];
 
+var dealsLoaded = false;
+var apiLoaded = false;
+
 // ---------------- CLUSTER ----------------
 var markerCluster = L.markerClusterGroup({
     maxClusterRadius: 80,
@@ -89,7 +92,7 @@ var markerCluster = L.markerClusterGroup({
                 color:white;
                 font-weight:bold;
             ">${cluster.getChildCount()}</div>`,
-            className: "", // 🔥 removes default styling
+            className: "",
             iconSize: [40,40]
         });
     }
@@ -110,6 +113,10 @@ function toggleToday(){
 // ---------------- HELPERS ----------------
 function normalize(str){
     return str.toLowerCase().replace(/[^a-z0-9]/g,"");
+}
+
+function clean(str){
+    return str.replace(/"/g, "").trim();
 }
 
 function formatHour(h){
@@ -135,7 +142,6 @@ function getCurrentDeals(bar){
     );
 }
 
-// 🔥 NEXT DEAL (RESTORED)
 function getNextDeal(bar){
     var now = new Date();
     var days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -167,7 +173,6 @@ function getNextDeal(bar){
 // ---------------- GOOGLE SHEET ----------------
 async function loadDealsFromSheet(){
 
-    // 🔥 PASTE YOUR CSV LINK HERE
     var url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRW0U7ggb9jz62hIyDEiTXqi6bzQ3NgZ_sEEdN7KfGsMLiwTaeYOHSK3e61bwbe2_GG_BStDFW2KNOQ/pub?output=csv";
 
     var res = await fetch(url);
@@ -180,11 +185,11 @@ async function loadDealsFromSheet(){
     rows.forEach(row=>{
         var cols = row.split(",");
 
-        var name = cols[0];
-        var day = cols[1];
+        var name = clean(cols[0]);
+        var day = clean(cols[1]);
         var start = parseFloat(cols[2]);
         var end = parseFloat(cols[3]);
-        var deal = cols[4];
+        var deal = clean(cols[4]);
 
         if(!mapData[name]){
             mapData[name] = { name:name, deals:[] };
@@ -194,8 +199,9 @@ async function loadDealsFromSheet(){
     });
 
     bars = Object.values(mapData);
+    dealsLoaded = true;
 
-    refreshMarkers();
+    if(apiLoaded) refreshMarkers();
 }
 
 // ---------------- MARKER ----------------
@@ -223,9 +229,11 @@ function refreshMarkers(){
     apiBars.forEach(place=>{
         var name = place.tags?.name || "Unnamed Bar";
 
-        var match = bars.find(b =>
-            normalize(name).includes(normalize(b.name))
-        );
+        var match = bars.find(b => {
+            var a = normalize(name);
+            var bName = normalize(b.name);
+            return a.includes(bName) || bName.includes(a);
+        });
 
         var todayDeals = match ? getTodayDeals(match) : [];
         var currentDeals = match ? getCurrentDeals(match) : [];
@@ -278,8 +286,9 @@ async function loadBarsFromOSM(lat,lng){
     var data = await res.json();
 
     apiBars = data.elements;
+    apiLoaded = true;
 
-    refreshMarkers();
+    if(dealsLoaded) refreshMarkers();
 }
 
 // ---------------- LOCATION ----------------
