@@ -2,7 +2,6 @@
 <html>
 <head>
     <title>Bar Deals Map</title>
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- Leaflet -->
@@ -15,22 +14,12 @@
     <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 
     <style>
-        body {
-            font-family: Arial;
-            background: #121212;
-            color: white;
-        }
-        #map {
-            height: 70vh;
-            border-radius: 12px;
-        }
-        button {
-            margin: 10px 5px;
-            padding: 8px 12px;
-            cursor: pointer;
-        }
+        body { font-family: Arial; background:#121212; color:white; text-align:center; }
+        #map { height:75vh; border-radius:12px; }
+        button { padding:10px 16px; margin:10px; border:none; border-radius:8px; background:#00c853; color:white; font-weight:bold;}
     </style>
 </head>
+
 <body>
 
 <h2>🍺 Bar Deals Near You</h2>
@@ -39,259 +28,193 @@
 <div id="map"></div>
 
 <script>
-    // ---------------------
-    // MAP SETUP
-    // ---------------------
-    var map = L.map('map', { maxZoom: 20 }).setView([43.8138, -91.2519], 13);
+
+// ---------------- MAP ----------------
+var map = L.map('map', { maxZoom:20 }).setView([43.8138, -91.2519], 13);
 
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap contributors & CartoDB',
-    maxZoom: 20
+    attribution: '&copy; OpenStreetMap & CartoDB',
+    maxZoom:20
 }).addTo(map);
 
-    // ---------------------
-    // STATE
-    // ---------------------
-    var showTodayOnly = false;
-    var userLat, userLng;
-    var apiBars = []; // 🔥 store API results
+// ---------------- STATE ----------------
+var showTodayOnly = false;
+var userLat, userLng;
+var apiBars = [];
+var bars = []; // 🔥 FROM GOOGLE SHEET
 
-    // ---------------------
-    // CLUSTER
-    // ---------------------
-    var markerCluster = L.markerClusterGroup({
-        maxClusterRadius: 80,
-        disableClusteringAtZoom: 17,
+// ---------------- CLUSTER ----------------
+var markerCluster = L.markerClusterGroup({
+    maxClusterRadius:80,
+    disableClusteringAtZoom:17,
+    iconCreateFunction: function(cluster){
+        var hasDeal = cluster.getAllChildMarkers().some(m=>m.options.hasDeal);
+        var color = hasDeal ? "#00c853" : "#888";
 
-        iconCreateFunction: function(cluster) {
-            var markers = cluster.getAllChildMarkers();
-            var hasDeal = markers.some(m => m.options.hasDeal);
+        return L.divIcon({
+            html:`<div style="background:${color};width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;">${cluster.getChildCount()}</div>`,
+            iconSize:[40,40]
+        });
+    }
+});
+map.addLayer(markerCluster);
 
-            var color = hasDeal ? "#00c853" : "#888";
+// ---------------- TOGGLE ----------------
+function toggleToday(){
+    showTodayOnly = !showTodayOnly;
+    document.querySelector("button").innerText =
+        showTodayOnly ? "Filter: ON (Today's Deals)" : "Filter: OFF (All Bars)";
+    refreshMarkers();
+}
 
-            return L.divIcon({
-                html: `<div style="
-                    background:${color};
-                    width:40px;
-                    height:40px;
-                    border-radius:50%;
-                    display:flex;
-                    align-items:center;
-                    justify-content:center;
-                    color:white;
-                    font-weight:bold;
-                ">${cluster.getChildCount()}</div>`,
-                className: "",
-                iconSize: [40, 40]
-            });
+// ---------------- HELPERS ----------------
+function normalize(str){
+    return str.toLowerCase().replace(/[^a-z0-9]/g,"");
+}
+
+function formatHour(h){
+    let suffix = h>=12?"PM":"AM";
+    let hour = h%12||12;
+    return hour + ":00 " + suffix;
+}
+
+function getTodayDeals(bar){
+    let today = new Date().toLocaleString('en-US',{weekday:'long'});
+    return bar.deals.filter(d=>d.day===today);
+}
+
+function getCurrentDeals(bar){
+    let now = new Date();
+    let today = now.toLocaleString('en-US',{weekday:'long'});
+    let hour = now.getHours();
+
+    return bar.deals.filter(d=>d.day===today && hour>=d.start && hour<d.end);
+}
+
+// ---------------- GOOGLE SHEET LOADER ----------------
+async function loadDealsFromSheet(){
+
+    // 🔥 🔥 🔥 PASTE YOUR CSV LINK HERE 🔥 🔥 🔥
+    var url = "PASTE_YOUR_GOOGLE_SHEET_CSV_LINK_HERE";
+
+    var res = await fetch(url);
+    var text = await res.text();
+
+    var rows = text.split("\n").slice(1);
+
+    var mapData = {};
+
+    rows.forEach(row=>{
+        var cols = row.split(",");
+
+        var name = cols[0];
+        var day = cols[1];
+        var start = parseFloat(cols[2]);
+        var end = parseFloat(cols[3]);
+        var deal = cols[4];
+
+        if(!mapData[name]){
+            mapData[name] = { name:name, deals:[] };
         }
+
+        mapData[name].deals.push({day,start,end,deal});
     });
 
-    map.addLayer(markerCluster);
+    bars = Object.values(mapData);
 
-    // ---------------------
-    // TOGGLE
-    // ---------------------
-    function toggleToday() {
-        showTodayOnly = !showTodayOnly;
+    console.log("Loaded bars:", bars);
 
-        document.querySelector("button").innerText =
-            showTodayOnly ? "Filter: ON (Today's Deals)" : "Filter: OFF (All Bars)";
+    refreshMarkers();
+}
 
-        refreshMarkers();
-    }
+// ---------------- RENDER ----------------
+function createMarker(lat,lng,popup,hasDeal){
+    var icon = L.icon({
+        iconUrl:`https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${hasDeal?'green':'grey'}.png`,
+        shadowUrl:'https://unpkg.com/leaflet/dist/images/marker-shadow.png',
+        iconSize:[25,41],
+        iconAnchor:[12,41]
+    });
 
-    // ---------------------
-    // HELPERS
-    // ---------------------
-    function formatHour(hour) {
-        var suffix = hour >= 12 ? "PM" : "AM";
-        var h = hour % 12 || 12;
-        return h + ":00 " + suffix;
-    }
+    return L.marker([lat,lng],{icon,hasDeal}).bindPopup(popup);
+}
 
-    function getTodayDeals(bar) {
-        var today = new Date().toLocaleString('en-US', { weekday: 'long' });
-        return bar.deals.filter(d => d.day === today);
-    }
+function refreshMarkers(){
+    markerCluster.clearLayers();
 
-    function getCurrentDeals(bar) {
-        var now = new Date();
-        var today = now.toLocaleString('en-US', { weekday: 'long' });
-        var hour = now.getHours();
-
-        return bar.deals.filter(d =>
-            d.day === today &&
-            hour >= d.start &&
-            hour < d.end
+    // user marker
+    if(userLat){
+        markerCluster.addLayer(
+            L.marker([userLat,userLng]).bindPopup("📍 You are here")
         );
     }
 
-    function getNextDeal(bar) {
-        var now = new Date();
-        var days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    // API bars
+    apiBars.forEach(place=>{
+        var name = place.tags?.name || "Unnamed Bar";
 
-        var upcoming = [];
+        var match = bars.find(b =>
+            normalize(name).includes(normalize(b.name))
+        );
 
-        bar.deals.forEach(d => {
-            var dealDay = days.indexOf(d.day);
-            var today = now.getDay();
+        var todayDeals = match ? getTodayDeals(match) : [];
+        var currentDeals = match ? getCurrentDeals(match) : [];
 
-            var diff = dealDay - today;
-            if (diff < 0) diff += 7;
+        if(showTodayOnly && todayDeals.length===0) return;
 
-            var date = new Date(now);
-            date.setDate(now.getDate() + diff);
-            date.setHours(d.start, 0, 0, 0);
+        var popup = `<b>${name}</b><br>`;
 
-            if (date > now) upcoming.push({ ...d, date });
-        });
-
-        if (upcoming.length === 0) return null;
-        upcoming.sort((a,b)=>a.date-b.date);
-        return upcoming[0];
-    }
-
-    function createMarker(lat, lng, popup, hasDeal) {
-        var icon = L.icon({
-            iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${hasDeal ? 'green' : 'grey'}.png`,
-            shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png',
-            iconSize: [25,41],
-            iconAnchor: [12,41]
-        });
-
-        return L.marker([lat, lng], { icon, hasDeal }).bindPopup(popup);
-    }
-
-    // ---------------------
-    // YOUR DATA
-    // ---------------------
-    var bars = [
-        {
-            name: "The Crow",
-            lat: 43.8127938,
-            lng: -91.2527736,
-            deals: [
-                { day: "Friday", start: 22, end: 23, deal: "POWER HOUR: $1 Rails" },
-                { day: "Wednesday", start: 12, end: 23, deal: "Wingo: BOGO BEER" },
-                { day: "Friday", start: 23, end: 24, deal: "$2 Rails" },
-                { day: "Saturday", start: 22, end: 23, deal: "POWER HOUR: $1 Rails" }
-            ]
-        },
-        {
-            name: "Brothers Bar",
-            lat: 43.8116725,
-            lng: -91.2528136,
-            deals: [
-                { day: "Thursday", start: 16, end: 18, deal: "$5 Wristbands" }
-            ]
+        if(currentDeals.length>0){
+            currentDeals.forEach(d=>popup+=`🔥 ${d.deal}<br>`);
         }
-    ];
-
-    // ---------------------
-    // MAIN RENDER FUNCTION
-    // ---------------------
-    function refreshMarkers() {
-        markerCluster.clearLayers();
-
-        // ✅ ALWAYS re-add user marker
-        if (userLat && userLng) {
-            var userMarker = L.marker([userLat, userLng])
-                .bindPopup("📍 You are here");
-
-            markerCluster.addLayer(userMarker);
+        else if(todayDeals.length>0){
+            popup+="📅 Today:<br>";
+            todayDeals.forEach(d=>{
+                popup+=`${formatHour(d.start)} - ${d.deal}<br>`;
+            });
+        }
+        else{
+            popup+="No deal data";
         }
 
-        // CUSTOM BARS
-        bars.forEach(bar => {
-            var todayDeals = getTodayDeals(bar);
-            var currentDeals = getCurrentDeals(bar);
-
-            if (showTodayOnly && todayDeals.length === 0) return;
-
-            var popup = `<b>${bar.name}</b><br>`;
-
-            if (currentDeals.length > 0) {
-                currentDeals.forEach(d => popup += `🔥 ${d.deal}<br>`);
-            } else if (todayDeals.length > 0) {
-                popup += "📅 Today:<br>";
-                todayDeals.forEach(d => {
-                    popup += `${formatHour(d.start)} - ${d.deal}<br>`;
-                });
-            } else {
-                var next = getNextDeal(bar);
-                popup += next ? `⏭️ ${next.day} ${formatHour(next.start)}<br>${next.deal}` : "No deals";
-            }
-
-            markerCluster.addLayer(
-                createMarker(bar.lat, bar.lng, popup, currentDeals.length > 0)
-            );
-        });
-
-        // API BARS (from stored data)
-        apiBars.forEach(place => {
-            var name = place.tags?.name || "Unnamed Bar";
-
-            var match = bars.find(b =>
-                name.toLowerCase().includes(b.name.toLowerCase())
-            );
-
-            var todayDeals = match ? getTodayDeals(match) : [];
-            var currentDeals = match ? getCurrentDeals(match) : [];
-
-            if (showTodayOnly && todayDeals.length === 0) return;
-
-            var popup = `<b>${name}</b><br>`;
-
-            if (currentDeals.length > 0) {
-                currentDeals.forEach(d => popup += `🔥 ${d.deal}<br>`);
-            } else if (todayDeals.length > 0) {
-                popup += "📅 Today:<br>";
-                todayDeals.forEach(d => {
-                    popup += `${formatHour(d.start)} - ${d.deal}<br>`;
-                });
-            } else {
-                popup += "No deal data";
-            }
-
-            markerCluster.addLayer(
-                createMarker(place.lat, place.lon, popup, currentDeals.length > 0)
-            );
-        });
-    }
-
-    // ---------------------
-    // LOAD API DATA
-    // ---------------------
-    async function loadBarsFromOSM(lat, lng) {
-        var query = `
-            [out:json];
-            node["amenity"~"bar|pub|nightclub"](around:3000, ${lat}, ${lng});
-            out;
-        `;
-
-        var res = await fetch("https://overpass-api.de/api/interpreter", {
-            method: "POST",
-            body: query
-        });
-
-        var data = await res.json();
-
-        apiBars = data.elements; // 🔥 store once
-        refreshMarkers();        // 🔥 then render
-    }
-
-    // ---------------------
-    // LOCATION
-    // ---------------------
-    map.locate({ setView: true, maxZoom: 14 });
-
-    map.on('locationfound', function(e) {
-        userLat = e.latlng.lat;
-        userLng = e.latlng.lng;
-
-        loadBarsFromOSM(userLat, userLng);
+        markerCluster.addLayer(
+            createMarker(place.lat, place.lon, popup, currentDeals.length>0)
+        );
     });
+}
+
+// ---------------- OSM API ----------------
+async function loadBarsFromOSM(lat,lng){
+    var query = `
+        [out:json];
+        node["amenity"~"bar|pub|nightclub"](around:3000, ${lat}, ${lng});
+        out;
+    `;
+
+    var res = await fetch("https://overpass-api.de/api/interpreter", {
+        method:"POST",
+        body:query
+    });
+
+    var data = await res.json();
+
+    apiBars = data.elements;
+
+    refreshMarkers();
+}
+
+// ---------------- LOCATION ----------------
+map.locate({setView:true,maxZoom:14});
+
+map.on('locationfound', function(e){
+    userLat = e.latlng.lat;
+    userLng = e.latlng.lng;
+
+    loadBarsFromOSM(userLat,userLng);
+});
+
+// ---------------- START ----------------
+loadDealsFromSheet();
 
 </script>
 
