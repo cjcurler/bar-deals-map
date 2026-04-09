@@ -36,7 +36,7 @@
             cursor: pointer;
         }
 
-        /* Remove cluster white background */
+        /* Fix cluster background */
         .marker-cluster,
         .marker-cluster div {
             background: transparent !important;
@@ -64,7 +64,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
 
 // ---------------- STATE ----------------
 var showTodayOnly = false;
-var userLat, userLng;
+var userLat = null, userLng = null;
 var apiBars = [];
 var bars = [];
 
@@ -116,7 +116,7 @@ function normalize(str){
 }
 
 function clean(str){
-    return str.replace(/"/g, "").trim();
+    return (str || "").replace(/"/g, "").trim();
 }
 
 function formatHour(h){
@@ -175,47 +175,42 @@ async function loadDealsFromSheet(){
 
     var url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRW0U7ggb9jz62hIyDEiTXqi6bzQ3NgZ_sEEdN7KfGsMLiwTaeYOHSK3e61bwbe2_GG_BStDFW2KNOQ/pub?output=csv";
 
-    var res = await fetch(url);
-    var text = await res.text();
+    try {
+        var res = await fetch(url);
+        var text = await res.text();
 
-    var rows = text.split("\n").slice(1);
+        var rows = text.split("\n").slice(1);
+        var mapData = {};
 
-    var mapData = {};
+        rows.forEach(row => {
 
-    rows.forEach(row => {
+            var cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
-        // ✅ FIX 1: Proper CSV split (handles commas in text)
-        var cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            var name = clean(cols[1]);
+            var day = clean(cols[2]);
+            var start = parseFloat(cols[3]);
+            var end = parseFloat(cols[4]);
+            var deal = clean(cols[5]);
 
-        // ✅ FIX 2: Correct column mapping
-        var name = clean(cols[1]); // Name
-        var day = clean(cols[2]);  // Day
-        var start = parseFloat(cols[3]);
-        var end = parseFloat(cols[4]);
-        var deal = clean(cols[5]); // Description
+            if (!name || !day || isNaN(start) || isNaN(end)) return;
 
-        // ✅ Skip bad / empty rows
-        if (!name || !day || isNaN(start) || isNaN(end)) return;
+            if (!mapData[name]) {
+                mapData[name] = { name, deals: [] };
+            }
 
-        if (!mapData[name]) {
-            mapData[name] = {
-                name: name,
-                deals: []
-            };
-        }
-
-        mapData[name].deals.push({
-            day: day,
-            start: start,
-            end: end,
-            deal: deal
+            mapData[name].deals.push({ day, start, end, deal });
         });
-    });
 
-    bars = Object.values(mapData);
+        bars = Object.values(mapData);
+
+    } catch(err){
+        console.error("Sheet failed:", err);
+        bars = [];
+    }
+
     dealsLoaded = true;
 
-    if (apiLoaded) refreshMarkers();
+    if(apiLoaded) refreshMarkers();
 }
 
 // ---------------- MARKER ----------------
@@ -234,7 +229,7 @@ function createMarker(lat,lng,popup,hasDeal){
 function refreshMarkers(){
     markerCluster.clearLayers();
 
-    if(userLat){
+    if(userLat && userLng){
         markerCluster.addLayer(
             L.marker([userLat,userLng]).bindPopup("📍 You are here")
         );
@@ -267,12 +262,9 @@ function refreshMarkers(){
         }
         else if(match){
             var next = getNextDeal(match);
-
-            if(next){
-                popup += `⏭️ ${next.day} ${formatHour(next.start)}<br>${next.deal}`;
-            } else {
-                popup += "No upcoming deals";
-            }
+            popup += next
+                ? `⏭️ ${next.day} ${formatHour(next.start)}<br>${next.deal}`
+                : "No upcoming deals";
         }
         else{
             popup += "No deal data";
@@ -292,14 +284,25 @@ async function loadBarsFromOSM(lat,lng){
         out;
     `;
 
-    var res = await fetch("https://overpass-api.de/api/interpreter", {
-        method:"POST",
-        body:query
-    });
+    try {
+        var res = await fetch("https://overpass-api.de/api/interpreter", {
+            method:"POST",
+            body:query
+        });
 
-    var data = await res.json();
+        if(!res.ok){
+            console.error("API failed:", res.status);
+            apiBars = [];
+        } else {
+            var data = await res.json();
+            apiBars = data.elements || [];
+        }
 
-    apiBars = data.elements;
+    } catch(err){
+        console.error("API error:", err);
+        apiBars = [];
+    }
+
     apiLoaded = true;
 
     if(dealsLoaded) refreshMarkers();
@@ -311,6 +314,15 @@ map.locate({setView:true,maxZoom:14});
 map.on('locationfound', function(e){
     userLat = e.latlng.lat;
     userLng = e.latlng.lng;
+
+    loadBarsFromOSM(userLat,userLng);
+});
+
+map.on('locationerror', function(){
+    console.log("Using fallback location");
+
+    userLat = 43.8138;
+    userLng = -91.2519;
 
     loadBarsFromOSM(userLat,userLng);
 });
