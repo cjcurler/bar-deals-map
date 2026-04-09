@@ -182,26 +182,40 @@ async function loadDealsFromSheet(){
 
     var mapData = {};
 
-    rows.forEach(row=>{
-        var cols = row.split(",");
+    rows.forEach(row => {
 
-        var name = clean(cols[0]);
-        var day = clean(cols[1]);
-        var start = parseFloat(cols[2]);
-        var end = parseFloat(cols[3]);
-        var deal = clean(cols[4]);
+        // ✅ FIX 1: Proper CSV split (handles commas in text)
+        var cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
-        if(!mapData[name]){
-            mapData[name] = { name:name, deals:[] };
+        // ✅ FIX 2: Correct column mapping
+        var name = clean(cols[1]); // Name
+        var day = clean(cols[2]);  // Day
+        var start = parseFloat(cols[3]);
+        var end = parseFloat(cols[4]);
+        var deal = clean(cols[5]); // Description
+
+        // ✅ Skip bad / empty rows
+        if (!name || !day || isNaN(start) || isNaN(end)) return;
+
+        if (!mapData[name]) {
+            mapData[name] = {
+                name: name,
+                deals: []
+            };
         }
 
-        mapData[name].deals.push({day,start,end,deal});
+        mapData[name].deals.push({
+            day: day,
+            start: start,
+            end: end,
+            deal: deal
+        });
     });
 
     bars = Object.values(mapData);
     dealsLoaded = true;
 
-    if(apiLoaded) refreshMarkers();
+    if (apiLoaded) refreshMarkers();
 }
 
 // ---------------- MARKER ----------------
