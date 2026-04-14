@@ -84,6 +84,13 @@
       alert(list.length ? list.join('\n') : 'No favorites yet');
     }
 
+    function formatHour(hour) {
+      const h = Number(hour);
+      const suffix = h >= 12 ? 'PM' : 'AM';
+      const display = h % 12 || 12;
+      return `${display}${suffix.toLowerCase()}`;
+    }
+
     function todayName() {
       return new Date().toLocaleString('en-US', { weekday: 'long' });
     }
@@ -104,11 +111,11 @@
       const active = dealNow(match);
 
       if (active && todayDeals.length) {
-        return '🔥 ' + todayDeals.map(d => `${d.deal} (${d.start}:00-${d.end}:00)`).join('<br>');
+        return '🔥 ' + todayDeals.map(d => `${d.deal} (${formatHour(d.start)}-${formatHour(d.end)})`).join('<br>');
       }
 
       if (todayDeals.length) {
-        return '📅 ' + todayDeals.map(d => `${d.deal} (${d.start}:00-${d.end}:00)`).join('<br>');
+        return '📅 ' + todayDeals.map(d => `${d.deal} (${formatHour(d.start)}-${formatHour(d.end)})`).join('<br>');
       }
 
       return 'No Deal Data';
