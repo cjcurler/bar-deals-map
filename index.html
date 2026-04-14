@@ -17,7 +17,13 @@ body{margin:0;background:#121212;color:#fff;font-family:Arial}#app{display:none}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, collection, addDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const firebaseConfig={apiKey:'YOUR_KEY',authDomain:'YOUR_DOMAIN',projectId:'YOUR_ID',appId:'YOUR_APP'};
+const firebaseConfig={  apiKey: "AIzaSyBuKACw2ih1EU3iRsm0lTcql3ATF7YUH9k",
+  authDomain: "barhoplax.firebaseapp.com",
+  projectId: "barhoplax",
+  storageBucket: "barhoplax.firebasestorage.app",
+  messagingSenderId: "377886747081",
+  appId: "1:377886747081:web:f0f99e03786077aa5fe018",
+  measurementId: "G-E8GG8CPXWY"};
 const fb=initializeApp(firebaseConfig),auth=getAuth(fb),db=getFirestore(fb),provider=new GoogleAuthProvider();
 let map,user,currentUser,userLat=43.8138,userLng=-91.2519,apiBars=[],showTodayOnly=false,favorites={};
 window.signInWithGoogle=()=>signInWithPopup(auth,provider);
