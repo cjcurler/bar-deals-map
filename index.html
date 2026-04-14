@@ -142,5 +142,95 @@
     }
   </script>
 
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signOut,
+      onAuthStateChanged
+    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+    import {
+      getFirestore,
+      doc,
+      setDoc,
+      getDocs,
+      collection,
+      addDoc
+    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: 'AIzaSyBuKACw2ih1EU3iRsm0lTcql3ATF7YUH9k',
+      authDomain: 'barhoplax.firebaseapp.com',
+      projectId: 'barhoplax',
+      storageBucket: 'barhoplax.firebasestorage.app',
+      messagingSenderId: '377886747081',
+      appId: '1:377886747081:web:f0f99e03786077aa5fe018'
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    window.signInWithGoogle = () => signInWithPopup(auth, provider);
+    window.logout = () => signOut(auth);
+
+    async function loadFavoritesFromFirestore() {
+      favorites = {};
+      const snap = await getDocs(collection(db, 'users', currentUser.uid, 'favorites'));
+      snap.forEach(item => {
+        favorites[item.id] = item.data().active;
+      });
+    }
+
+    window.toggleFavorite = async function(name) {
+      favorites[name] = !favorites[name];
+      await setDoc(doc(db, 'users', currentUser.uid, 'favorites', name), {
+        name,
+        active: favorites[name]
+      });
+      render();
+    };
+
+    window.trackClick = async function(name) {
+      if (!currentUser) return;
+      await addDoc(collection(db, 'analytics_clicks'), {
+        uid: currentUser.uid,
+        email: currentUser.email,
+        barName: name,
+        timestamp: Date.now()
+      });
+    };
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        document.getElementById('userInfo').innerText = 'Login required';
+        return;
+      }
+
+      currentUser = user;
+      document.getElementById('userInfo').innerHTML = `✅ ${user.displayName}<br>${user.email}`;
+
+      initMap();
+      await loadFavoritesFromFirestore();
+      await loadDeals();
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          userLat = pos.coords.latitude;
+          userLng = pos.coords.longitude;
+          map.setView([userLat, userLng], 14);
+          await loadBars();
+        },
+        async () => {
+          await loadBars();
+        },
+        { timeout: 4000 }
+      );
+    });
+  </script>
+
 </body>
 </html>
