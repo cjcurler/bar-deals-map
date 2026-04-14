@@ -1,54 +1,146 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bar Deals Map Pro</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
-<style>
-body{margin:0;font-family:Arial;background:#121212;color:#fff}#map{height:82vh}.top{padding:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}.btn{padding:10px 14px;border:none;border-radius:10px;background:#00c853;color:#fff;font-weight:700;cursor:pointer}.ghost{background:#555}.panel{padding:8px 12px}.login{position:absolute;z-index:9999;top:15px;left:15px;background:#1e1e1e;padding:14px;border-radius:14px;box-shadow:0 8px 20px rgba(0,0,0,.4)}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bar Deals Real Final</title>
+
+  <!-- Libraries -->
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      background: #121212;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      padding-right: 260px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 10px;
+      background: #00c853;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .secondary { background: #555; }
+    #map { height: 82vh; }
+    .login {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      z-index: 9999;
+      background: #1e1e1e;
+      padding: 14px;
+      border-radius: 14px;
+      width: 220px;
+    }
+  </style>
+
 </head>
 <body>
-<div class="login" id="authBox">
-<button class="btn" onclick="signInWithGoogle()">Login</button>
-<button class="btn ghost" onclick="logout()">Logout</button>
-<div id="userInfo" class="panel">Not logged in</div>
-</div>
-<div class="top">
-<button class="btn" onclick="toggleToday()" id="filterBtn">Filter: OFF (All Bars)</button>
-</div>
-<div id="map"></div>
-<script>
-let map=L.map('map',{maxZoom:20}).setView([43.8138,-91.2519],13);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20}).addTo(map);
-let userLat=43.8138,userLng=-91.2519,apiBars=[],bars=[],showTodayOnly=false,dealsLoaded=false,apiLoaded=false,currentUser=null,favorites={};
-let markerCluster=L.markerClusterGroup({maxClusterRadius:80,disableClusteringAtZoom:17}); map.addLayer(markerCluster);
-function normalize(s){return (s||'').toLowerCase().replace(/[^a-z0-9]/g,'')} function clean(s){return (s||'').replace(/"/g,'').trim()} function formatHour(h){let suf=h>=12?'PM':'AM';let hr=h%12||12;return hr+':00 '+suf}
-function getTodayDeals(bar){let t=new Date().toLocaleString('en-US',{weekday:'long'});return bar.deals.filter(d=>d.day===t)}
-function getCurrentDeals(bar){let n=new Date(),t=n.toLocaleString('en-US',{weekday:'long'}),h=n.getHours();return bar.deals.filter(d=>d.day===t&&h>=d.start&&h<d.end)}
-function toggleToday(){showTodayOnly=!showTodayOnly;document.getElementById('filterBtn').innerText=showTodayOnly?'Filter: ON (Today\'s Deals)':'Filter: OFF (All Bars)';refreshMarkers()}
-async function loadDeals(){try{let res=await fetch('https://docs.google.com/spreadsheets/d/e/2PACX-1vRW0U7ggb9jz62hIyDEiTXqi6bzQ3NgZ_sEEdN7KfGsMLiwTaeYOHSK3e61bwbe2_GG_BStDFW2KNOQ/pub?output=csv');let txt=await res.text();let rows=txt.split('\n').slice(1),m={};rows.forEach(r=>{let c=r.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);let name=clean(c[1]),day=clean(c[2]),start=parseFloat(c[3]),end=parseFloat(c[4]),deal=clean(c[5]);if(!name||!day||isNaN(start)||isNaN(end))return;if(!m[name])m[name]={name,deals:[]};m[name].deals.push({day,start,end,deal})});bars=Object.values(m)}catch(e){bars=[]}dealsLoaded=true;if(apiLoaded)refreshMarkers()}
-async function loadBars(lat,lng){let cache=localStorage.getItem('bars_cache');if(cache){apiBars=JSON.parse(cache);refreshMarkers()}try{let q=`[out:json][timeout:25];node["amenity"~"bar|pub|nightclub"](around:3000,${lat},${lng});out;`;let res=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:q});let data=await res.json();apiBars=data.elements||apiBars;localStorage.setItem('bars_cache',JSON.stringify(apiBars))}catch(e){}apiLoaded=true;if(dealsLoaded)refreshMarkers()}
-function refreshMarkers(){markerCluster.clearLayers();markerCluster.addLayer(L.marker([userLat,userLng]).bindPopup('📍 You are here'));apiBars.forEach(p=>{let name=p.tags?.name||'Unnamed Bar';let match=bars.find(b=>{let a=normalize(name),bn=normalize(b.name);return a.includes(bn)||bn.includes(a)});let today=match?getTodayDeals(match):[];let current=match?getCurrentDeals(match):[];if(showTodayOnly&&today.length===0)return;let star=favorites[name]?'★':'☆';let popup=`<b>${name}</b><br>`;if(current.length){current.forEach(d=>popup+=`🔥 ${d.deal}<br>`)} else if(today.length){today.forEach(d=>popup+=`${formatHour(d.start)} - ${d.deal}<br>`)} else popup+='No current deals<br>';popup+=`<button onclick="toggleFavorite('${name.replace(/'/g,'')}')">${star} Favorite</button>`;let m=L.marker([p.lat,p.lon]).bindPopup(popup);m.on('click',()=>trackClick(name));markerCluster.addLayer(m)})}
-function startLocate(){navigator.geolocation.getCurrentPosition(pos=>{userLat=pos.coords.latitude;userLng=pos.coords.longitude;map.setView([userLat,userLng],14);loadBars(userLat,userLng)},()=>loadBars(userLat,userLng),{timeout:4000})}
-function toggleFavorite(name){favorites[name]=!favorites[name];localStorage.setItem('favorites',JSON.stringify(favorites));refreshMarkers()}
-function trackClick(name){let clicks=JSON.parse(localStorage.getItem('clicks')||'[]');clicks.push({name,time:Date.now(),user:currentUser?.email||'guest'});localStorage.setItem('clicks',JSON.stringify(clicks))}
-favorites=JSON.parse(localStorage.getItem('favorites')||'{}');loadDeals();startLocate();
-</script>
-<script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-const firebaseConfig={  apiKey: "AIzaSyBuKACw2ih1EU3iRsm0lTcql3ATF7YUH9k",
-  authDomain: "barhoplax.firebaseapp.com",
-  projectId: "barhoplax",
-  storageBucket: "barhoplax.firebasestorage.app",
-  messagingSenderId: "377886747081",
-  appId: "1:377886747081:web:f0f99e03786077aa5fe018",
-  measurementId: "G-E8GG8CPXWY"};
-try{const app=initializeApp(firebaseConfig),auth=getAuth(app),provider=new GoogleAuthProvider();window.signInWithGoogle=()=>signInWithPopup(auth,provider);window.logout=()=>signOut(auth);onAuthStateChanged(auth,u=>{currentUser=u;document.getElementById('userInfo').innerHTML=u?`✅ ${u.displayName}<br><small>${u.email}</small>`:'Not logged in'})}catch(e){window.signInWithGoogle=()=>alert('Add Firebase config first');window.logout=()=>{}}
-</script>
-</body></html>
+  <div class="login">
+    <button class="btn" onclick="signInWithGoogle()">Login</button>
+    <button class="btn secondary" onclick="logout()">Logout</button>
+    <div id="userInfo">Checking login...</div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="filterBtn" onclick="toggleFilter()">Filter: OFF</button>
+    <button class="btn secondary" onclick="showFavorites()">Favorite Bars</button>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    let map, cluster;
+    let userLat = 43.8138;
+    let userLng = -91.2519;
+    let apiBars = [];
+    let bars = [];
+    let favorites = {};
+    let showDeals = false;
+    let currentUser = null;
+
+    function initMap() {
+      map = L.map('map').setView([userLat, userLng], 13);
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+      cluster = L.markerClusterGroup({
+        iconCreateFunction(group) {
+          const active = group.getAllChildMarkers().some(m => m.options.hasDeal);
+          const color = active ? '#00c853' : '#777';
+
+          return L.divIcon({
+            html: `<div style="background:${color};width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold">${group.getChildCount()}</div>`,
+            className: '',
+            iconSize: [40, 40]
+          });
+        }
+      });
+
+      map.addLayer(cluster);
+    }
+
+    function toggleFilter() {
+      showDeals = !showDeals;
+      document.getElementById('filterBtn').innerText = showDeals ? 'Filter: ON' : 'Filter: OFF';
+      render();
+    }
+
+    function todayName() {
+      return new Date().toLocaleString('en-US', { weekday: 'long' });
+    }
+
+    function dealNow(match) {
+      if (!match) return false;
+      const h = new Date().getHours();
+      return match.deals.some(x => x.day === todayName() && h >= x.start && h < x.end);
+    }
+
+    function dealToday(match) {
+      if (!match) return false;
+      return match.deals.some(x => x.day === todayName());
+    }
+
+    async function loadDeals() {
+      const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRW0U7ggb9jz62hIyDEiTXqi6bzQ3NgZ_sEEdN7KfGsMLiwTaeYOHSK3e61bwbe2_GG_BStDFW2KNOQ/pub?output=csv';
+      const res = await fetch(url);
+      const text = await res.text();
+      const rows = text.split('\n').slice(1);
+      const data = {};
+
+      rows.forEach(row => {
+        const c = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+        const name = (c[1] || '').replace(/"/g, '').trim();
+        if (!name) return;
+
+        if (!data[name]) data[name] = { name, deals: [] };
+        data[name].deals.push({
+          day: (c[2] || '').trim(),
+          start: parseFloat(c[3]),
+          end: parseFloat(c[4]),
+          deal: (c[5] || '').trim()
+        });
+      });
+
+      bars = Object.values(data);
+    }
+  </script>
+
+</body>
+</html>
