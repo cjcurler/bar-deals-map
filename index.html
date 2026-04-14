@@ -140,6 +140,78 @@
 
       bars = Object.values(data);
     }
+  
+    async function loadBars() {
+      try {
+        const cache = localStorage.getItem('bars_cache');
+        if (cache) {
+          apiBars = JSON.parse(cache);
+          render();
+        }
+
+        const query = `
+          [out:json][timeout:25];
+          node["amenity"~"bar|pub|nightclub"](around:3000, ${userLat}, ${userLng});
+          out;
+        `;
+
+        const res = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: query
+        });
+
+        const data = await res.json();
+        apiBars = data.elements || [];
+        localStorage.setItem('bars_cache', JSON.stringify(apiBars));
+        render();
+      } catch (error) {
+        console.error('Bar load failed:', error);
+      }
+    }
+
+    function render() {
+      if (!cluster) return;
+      cluster.clearLayers();
+
+      const userMarker = L.marker([userLat, userLng]).bindPopup('📍 You are here');
+      cluster.addLayer(userMarker);
+
+      apiBars.forEach(place => {
+        const name = place.tags?.name || 'Unnamed Bar';
+        const match = bars.find(b =>
+          name.toLowerCase().includes(b.name.toLowerCase()) ||
+          b.name.toLowerCase().includes(name.toLowerCase())
+        );
+
+        const active = dealNow(match);
+        const todayDeal = dealToday(match);
+
+        if (showDeals && !todayDeal) return;
+
+        const icon = L.icon({
+          iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${active ? 'green' : 'grey'}.png`,
+          shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41]
+        });
+
+        const star = favorites[name] ? '★' : '☆';
+
+        const popup = `
+          <b>${name}</b><br>
+          ${active ? '🔥 Deal Live' : todayDeal ? '📅 Deal Today' : 'No Deal Data'}<br><br>
+          <button onclick="toggleFavorite('${name.replace(/'/g, '')}')">${star} Favorite</button>
+        `;
+
+        const marker = L.marker([place.lat, place.lon], {
+          icon,
+          hasDeal: active
+        }).bindPopup(popup);
+
+        marker.on('click', () => trackClick(name));
+        cluster.addLayer(marker);
+      });
+    }
   </script>
 
   <script type="module">
