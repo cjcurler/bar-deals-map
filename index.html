@@ -46,13 +46,81 @@
 </head>
 
 <body>
+<!-- 🔥 LOGIN UI (put this above <div id="map"></div>) -->
+<div id="authBox" style="margin:10px;">
+    <button onclick="signInWithGoogle()">🔐 Login with Google</button>
+    <button onclick="logout()" style="background:#666;">Logout</button>
+    <div id="userInfo" style="margin-top:8px;"></div>
+</div>
 
+<!-- 🔥 FIREBASE AUTH (put near bottom of page, before </body>) -->
+<script type="module">
+
+// Firebase SDK
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+import {
+    getAuth,
+    GoogleAuthProvider,
+    signInWithPopup,
+    signOut,
+    onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+// 🔥 PASTE YOUR FIREBASE CONFIG HERE
+const firebaseConfig = {
+  apiKey: "AIzaSyBuKACw2ih1EU3iRsm0lTcql3ATF7YUH9k",
+  authDomain: "barhoplax.firebaseapp.com",
+  projectId: "barhoplax",
+  storageBucket: "barhoplax.firebasestorage.app",
+  messagingSenderId: "377886747081",
+  appId: "1:377886747081:web:f0f99e03786077aa5fe018",
+  measurementId: "G-E8GG8CPXWY"
+};
+
+// Init Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+
+// Make functions available to buttons
+window.signInWithGoogle = async function () {
+    try {
+        const result = await signInWithPopup(auth, provider);
+        console.log("Logged in:", result.user);
+    } catch (error) {
+        console.error("Login failed:", error);
+        alert("Login failed");
+    }
+};
+
+window.logout = async function () {
+    await signOut(auth);
+};
+
+// Update UI when auth changes
+onAuthStateChanged(auth, (user) => {
+    const box = document.getElementById("userInfo");
+
+    if (user) {
+        box.innerHTML = `
+            ✅ Logged in as <b>${user.displayName}</b><br>
+            <small>${user.email}</small>
+        `;
+    } else {
+        box.innerHTML = "Not logged in";
+    }
+});
+
+</script>
 <h2>🍺 Bar Deals Near You</h2>
 <button onclick="toggleToday()">Filter: OFF (All Bars)</button>
 
 <div id="map"></div>
 
 <script>
+
+
 
 // ---------------- MAP ----------------
 var map = L.map('map', { maxZoom:20 }).setView([43.8138, -91.2519], 13);
