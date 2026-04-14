@@ -14,39 +14,14 @@
   <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 
   <style>
-    body {
-      margin: 0;
-      background: #121212;
-      color: white;
-      font-family: Arial, sans-serif;
-    }
-    .toolbar {
-      display: flex;
-      gap: 10px;
-      padding: 10px;
-      padding-right: 260px;
-      flex-wrap: wrap;
-    }
-    .btn {
-      padding: 10px 14px;
-      border: 0;
-      border-radius: 10px;
-      background: #00c853;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    .secondary { background: #555; }
-    #map { height: 82vh; }
+    body { margin:0; background:#121212; color:#fff; font-family:Arial,sans-serif; }
+    .toolbar { display:flex; gap:10px; padding:10px; padding-right:260px; flex-wrap:wrap; }
+    .btn { padding:10px 14px; border:0; border-radius:10px; background:#00c853; color:#fff; font-weight:bold; cursor:pointer; }
+    .secondary { background:#555; }
+    #map { height:82vh; }
     .login {
-      position: absolute;
-      top: 15px;
-      right: 15px;
-      z-index: 9999;
-      background: #1e1e1e;
-      padding: 14px;
-      border-radius: 14px;
-      width: 220px;
+      position:absolute; top:15px; right:15px; z-index:9999;
+      background:#1e1e1e; padding:14px; border-radius:14px; width:220px;
     }
   </style>
 
@@ -81,6 +56,8 @@
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
       cluster = L.markerClusterGroup({
+        maxClusterRadius: 45,
+        disableClusteringAtZoom: 16,
         iconCreateFunction(group) {
           const active = group.getAllChildMarkers().some(m => m.options.hasDeal);
           const color = active ? '#00c853' : '#777';
@@ -102,19 +79,39 @@
       render();
     }
 
+    function showFavorites() {
+      const list = Object.keys(favorites).filter(name => favorites[name]);
+      alert(list.length ? list.join('\n') : 'No favorites yet');
+    }
+
     function todayName() {
       return new Date().toLocaleString('en-US', { weekday: 'long' });
     }
 
     function dealNow(match) {
       if (!match) return false;
-      const h = new Date().getHours();
-      return match.deals.some(x => x.day === todayName() && h >= x.start && h < x.end);
+      const hour = new Date().getHours();
+      return match.deals.some(d => d.day === todayName() && hour >= d.start && hour < d.end);
     }
 
-    function dealToday(match) {
-      if (!match) return false;
-      return match.deals.some(x => x.day === todayName());
+    function todaysDeals(match) {
+      if (!match) return [];
+      return match.deals.filter(d => d.day === todayName());
+    }
+
+    function getDealText(match) {
+      const todayDeals = todaysDeals(match);
+      const active = dealNow(match);
+
+      if (active && todayDeals.length) {
+        return '🔥 ' + todayDeals.map(d => `${d.deal} (${d.start}:00-${d.end}:00)`).join('<br>');
+      }
+
+      if (todayDeals.length) {
+        return '📅 ' + todayDeals.map(d => `${d.deal} (${d.start}:00-${d.end}:00)`).join('<br>');
+      }
+
+      return 'No Deal Data';
     }
 
     async function loadDeals() {
@@ -140,7 +137,7 @@
 
       bars = Object.values(data);
     }
-  
+
     async function loadBars() {
       try {
         const cache = localStorage.getItem('bars_cache');
@@ -184,9 +181,8 @@
         );
 
         const active = dealNow(match);
-        const todayDeal = dealToday(match);
-
-        if (showDeals && !todayDeal) return;
+        const hasToday = todaysDeals(match).length > 0;
+        if (showDeals && !hasToday) return;
 
         const icon = L.icon({
           iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${active ? 'green' : 'grey'}.png`,
@@ -196,10 +192,9 @@
         });
 
         const star = favorites[name] ? '★' : '☆';
-
         const popup = `
           <b>${name}</b><br>
-          ${active ? '🔥 Deal Live' : todayDeal ? '📅 Deal Today' : 'No Deal Data'}<br><br>
+          ${getDealText(match)}<br><br>
           <button onclick="toggleFavorite('${name.replace(/'/g, '')}')">${star} Favorite</button>
         `;
 
@@ -216,21 +211,8 @@
 
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-    import {
-      getAuth,
-      GoogleAuthProvider,
-      signInWithPopup,
-      signOut,
-      onAuthStateChanged
-    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-    import {
-      getFirestore,
-      doc,
-      setDoc,
-      getDocs,
-      collection,
-      addDoc
-    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+    import { getFirestore, doc, setDoc, getDocs, collection, addDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
     const firebaseConfig = {
       apiKey: 'AIzaSyBuKACw2ih1EU3iRsm0lTcql3ATF7YUH9k',
@@ -276,7 +258,7 @@
       });
     };
 
-    onAuthStateChanged(auth, async (user) => {
+    onAuthStateChanged(auth, async user => {
       if (!user) {
         document.getElementById('userInfo').innerText = 'Login required';
         return;
@@ -290,7 +272,7 @@
       await loadDeals();
 
       navigator.geolocation.getCurrentPosition(
-        async (pos) => {
+        async pos => {
           userLat = pos.coords.latitude;
           userLng = pos.coords.longitude;
           map.setView([userLat, userLng], 14);
